@@ -32,50 +32,37 @@ def cleanup_files(files):
 @app.get("/info_image")
 def info_image(full_name: str, phone: str, email: str, job_title: str = "", company: str = "", website: str = ""):
     width, height = 700, 400
-    img = Image.new("RGB", (width, height), color=(255, 255, 255))
+    img = Image.new("RGB", (width, height), color=(255, 255, 255))  # white bg
     draw = ImageDraw.Draw(img)
-
-    # Gradient background
-    for y in range(height):
-        r = 240
-        g = 248 - int((y / height) * 40)
-        b = 255 - int((y / height) * 80)
-        draw.line([(0, y), (width, y)], fill=(r, g, b))
 
     # Fonts
     try:
-        name_font = ImageFont.truetype("arial.ttf", 32)
-        title_font = ImageFont.truetype("arial.ttf", 22)
+        title_font = ImageFont.truetype("arial.ttf", 28)
         font = ImageFont.truetype("arial.ttf", 20)
     except:
-        name_font = ImageFont.load_default()
         title_font = ImageFont.load_default()
         font = ImageFont.load_default()
 
-    # Card Border
-    border_color = (30, 60, 114)
-    draw.rounded_rectangle([(20, 20), (width - 20, height - 20)], radius=25, outline=border_color, width=5)
+    # Card border
+    border_color = (30, 60, 114)  # deep blue
+    draw.rounded_rectangle([(20, 20), (width - 20, height - 20)], radius=20, outline=border_color, width=4)
 
-    # Left Section (Name & Title)
-    draw.text((50, 80), full_name, fill=(20, 40, 90), font=name_font)
-    if job_title:
-        draw.text((50, 130), job_title, fill=(60, 60, 60), font=title_font)
-    if company:
-        draw.text((50, 170), company, fill=(60, 60, 60), font=title_font)
+    # Name (highlighted on top)
+    draw.text((50, 50), f"Name: {full_name}", fill=(20, 40, 90), font=title_font)
 
-    # Right Section (Contact Info with icons)
-    x_start = 400
-    y_text = 100
-    contact_info = [
-        ("📞", f"{phone}"),
-        ("✉️", f"{email}"),
-        ("🌐", f"{website}") if website else None
+    # Other details
+    y_text = 120
+    details = [
+        f"Job Title: {job_title}" if job_title else "",
+        f"Company: {company}" if company else "",
+        f"Phone: {phone}",
+        f"Email: {email}",
+        f"Website: {website}" if website else ""
     ]
-    for item in contact_info:
-        if item:
-            icon, text = item
-            draw.text((x_start, y_text), f"{icon}  {text}", fill=(40, 40, 40), font=font)
-            y_text += 50
+    for line in details:
+        if line.strip():
+            draw.text((50, y_text), line, fill=(40, 40, 40), font=font)
+            y_text += 40
 
     # Serve image directly using StreamingResponse
     buf = io.BytesIO()
@@ -140,7 +127,7 @@ END:VCARD
             color_mask=SolidFillColorMask(front_color=(30, 60, 114), back_color=(224, 255, 255))
         )
 
-        # Optional logo
+        # Optional logo in QR center
         logo_path = "logo.png"
         if os.path.exists(logo_path):
             logo = Image.open(logo_path)
