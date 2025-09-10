@@ -59,16 +59,13 @@ def create_card_image(data: CardData, filename: str):
     border_width = 8
     draw.rectangle([0, 0, width, height], outline=border_color, width=border_width)
 
-    # Fonts
-    try:
-        font_bold = ImageFont.truetype("arialbd.ttf", 28)
-        font_regular = ImageFont.truetype("arial.ttf", 24)
-    except:
-        font_bold = font_regular = ImageFont.load_default()
+    # Safe fonts (no crash on server)
+    font_bold = ImageFont.load_default()
+    font_regular = ImageFont.load_default()
 
     # Starting position
     x_start, y_start = 60, 80
-    line_spacing = 55
+    line_spacing = 50
 
     # Labels and values
     info = [
