@@ -1,158 +1,124 @@
-from fastapi import FastAPI, Request, Form, HTTPException, BackgroundTasks
-from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse
+from fastapi import FastAPI, Form
+from fastapi.responses import FileResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
+from fastapi.requests import Request
 import qrcode
-from qrcode.image.styledpil import StyledPilImage
-from qrcode.image.styles.moduledrawers import RoundedModuleDrawer
-from qrcode.image.styles.colormasks import SolidFillColorMask
+from qrcode.image.pil import PilImage
+from pydantic import BaseModel
+import os, zipfile
 from PIL import Image, ImageDraw, ImageFont
-from zipfile import ZipFile
-import os
-import io
-import urllib.parse
 
 app = FastAPI()
 
-# Static files
-app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
-@app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
 
-# Cleanup function for background task
-def cleanup_files(files):
-    for f in files:
-        if os.path.exists(f):
-            os.remove(f)
+class CardData(BaseModel):
+    name: str
+    phone: str
+    email: str
+    job: str
+    company: str
+    website: str
 
-# -------- Info Image endpoint --------
-@app.get("/info_image")
-def info_image(full_name: str, phone: str, email: str, job_title: str = "", company: str = "", website: str = ""):
-    width, height = 700, 400
-    img = Image.new("RGB", (width, height), color=(255, 255, 255))  # white bg
+
+def create_vcf(data: CardData, filename: str):
+    vcf_content = f"""BEGIN:VCARD
+VERSION:3.0
+FN:{data.name}
+TEL:{data.phone}
+EMAIL:{data.email}
+TITLE:{data.job}
+ORG:{data.company}
+URL:{data.website}
+END:VCARD
+"""
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(vcf_content)
+
+
+def create_qr(data: CardData, filename: str):
+    qr_data = f"Name: {data.name}\nPhone: {data.phone}\nEmail: {data.email}\nJob: {data.job}\nCompany: {data.company}\nWebsite: {data.website}"
+    qr = qrcode.QRCode(box_size=10, border=4)
+    qr.add_data(qr_data)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    img.save(filename)
+
+
+def create_card_image(data: CardData, filename: str):
+    # Image size
+    width, height = 800, 400
+    img = Image.new("RGB", (width, height), "#E6F2FA")  # Light Sky Blue BG
     draw = ImageDraw.Draw(img)
+
+    # Border
+    border_color = "#1E3A8A"  # Dark Blue
+    border_width = 8
+    draw.rectangle([0, 0, width, height], outline=border_color, width=border_width)
 
     # Fonts
     try:
-        title_font = ImageFont.truetype("arial.ttf", 28)
-        font = ImageFont.truetype("arial.ttf", 20)
+        font_bold = ImageFont.truetype("arialbd.ttf", 28)
+        font_regular = ImageFont.truetype("arial.ttf", 24)
     except:
-        title_font = ImageFont.load_default()
-        font = ImageFont.load_default()
+        font_bold = font_regular = ImageFont.load_default()
 
-    # Card border
-    border_color = (30, 60, 114)  # deep blue
-    draw.rounded_rectangle([(20, 20), (width - 20, height - 20)], radius=20, outline=border_color, width=4)
+    # Starting position
+    x_start, y_start = 60, 80
+    line_spacing = 55
 
-    # Name (highlighted on top)
-    draw.text((50, 50), f"Name: {full_name}", fill=(20, 40, 90), font=title_font)
-
-    # Other details
-    y_text = 120
-    details = [
-        f"Job Title: {job_title}" if job_title else "",
-        f"Company: {company}" if company else "",
-        f"Phone: {phone}",
-        f"Email: {email}",
-        f"Website: {website}" if website else ""
+    # Labels and values
+    info = [
+        ("Name:", data.name),
+        ("Phone:", data.phone),
+        ("Email:", data.email),
+        ("Job Title:", data.job),
+        ("Company:", data.company),
+        ("Website:", data.website),
     ]
-    for line in details:
-        if line.strip():
-            draw.text((50, y_text), line, fill=(40, 40, 40), font=font)
-            y_text += 40
 
-    # Serve image directly using StreamingResponse
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    buf.seek(0)
-    return StreamingResponse(buf, media_type="image/png")
+    for i, (label, value) in enumerate(info):
+        y = y_start + i * line_spacing
+        draw.text((x_start, y), label, font=font_bold, fill="black")
+        draw.text((x_start + 180, y), value, font=font_regular, fill="black")
 
-# -------- Generate Card endpoint --------
+    img.save(filename)
+
+
+@app.get("/")
+async def form_page(request: Request):
+    return templates.TemplateResponse("form.html", {"request": request})
+
+
 @app.post("/card")
 async def generate_card(
-    background_tasks: BackgroundTasks,
-    full_name: str = Form(...),
+    name: str = Form(...),
     phone: str = Form(...),
     email: str = Form(...),
-    job_title: str = Form(""),
-    company: str = Form(""),
-    website: str = Form("")
+    job: str = Form(...),
+    company: str = Form(...),
+    website: str = Form(...),
 ):
-    vcard_path = "card.vcf"
-    qr_path = "qrcode.png"
-    zip_path = "card_package.zip"
+    data = CardData(name=name, phone=phone, email=email, job=job, company=company, website=website)
 
-    try:
-        # vCard content
-        vcard_content = f"""BEGIN:VCARD
-VERSION:3.0
-FN:{full_name}
-ORG:{company}
-TITLE:{job_title}
-TEL;TYPE=CELL:{phone}
-EMAIL:{email}
-URL:{website}
-END:VCARD
-"""
-        with open(vcard_path, "w") as f:
-            f.write(vcard_content)
+    # File paths
+    vcf_file = "card.vcf"
+    qr_file = "qrcode.png"
+    img_file = "business_card.png"
+    zip_file = "card_package.zip"
 
-        # Encode info_image URL with query params
-        query_params = urllib.parse.urlencode({
-            "full_name": full_name,
-            "phone": phone,
-            "email": email,
-            "job_title": job_title,
-            "company": company,
-            "website": website
-        })
-        info_url = f"https://digital-card-api.onrender.com/info_image?{query_params}"
+    # Create files
+    create_vcf(data, vcf_file)
+    create_qr(data, qr_file)
+    create_card_image(data, img_file)
 
-        # QR Code
-        qr = qrcode.QRCode(
-            version=1,
-            error_correction=qrcode.constants.ERROR_CORRECT_H,
-            box_size=10,
-            border=4
-        )
-        qr.add_data(info_url)
-        qr.make(fit=True)
+    # Package into ZIP
+    with zipfile.ZipFile(zip_file, "w") as zipf:
+        zipf.write(vcf_file)
+        zipf.write(qr_file)
+        zipf.write(img_file)
 
-        qr_img = qr.make_image(
-            image_factory=StyledPilImage,
-            module_drawer=RoundedModuleDrawer(),
-            color_mask=SolidFillColorMask(front_color=(30, 60, 114), back_color=(224, 255, 255))
-        )
-
-        # Optional logo in QR center
-        logo_path = "logo.png"
-        if os.path.exists(logo_path):
-            logo = Image.open(logo_path)
-            basewidth = int(qr_img.size[0] * 0.2)
-            wpercent = (basewidth / float(logo.size[0]))
-            hsize = int((float(logo.size[1]) * float(wpercent)))
-            logo = logo.resize((basewidth, hsize), Image.Resampling.LANCZOS)
-            pos = ((qr_img.size[0] - logo.size[0]) // 2, (qr_img.size[1] - logo.size[1]) // 2)
-            if logo.mode == "RGBA":
-                qr_img.paste(logo, pos, mask=logo.split()[3])
-            else:
-                qr_img.paste(logo, pos)
-
-        qr_img.save(qr_path)
-
-        # Create ZIP
-        with ZipFile(zip_path, "w") as zipf:
-            zipf.write(vcard_path, arcname="card.vcf")
-            zipf.write(qr_path, arcname="qrcode.png")
-
-        # Cleanup
-        background_tasks.add_task(cleanup_files, [vcard_path, qr_path, zip_path])
-
-        return FileResponse(zip_path, media_type="application/zip", filename="digital_card.zip")
-
-    except Exception as e:
-        print("Error generating card:", str(e))
-        raise HTTPException(status_code=500, detail=f"Failed to generate card: {str(e)}")
+    return FileResponse(zip_file, media_type="application/zip", filename=zip_file)
