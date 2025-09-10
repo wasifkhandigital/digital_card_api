@@ -4,10 +4,8 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.requests import Request
 import qrcode
-from qrcode.image.pil import PilImage
 from pydantic import BaseModel
 import os, zipfile
-from PIL import Image, ImageDraw, ImageFont
 
 app = FastAPI()
 
@@ -48,7 +46,6 @@ def create_qr(data: CardData, filename: str):
     img.save(filename)
 
 
-
 @app.get("/")
 async def form_page(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
@@ -59,9 +56,9 @@ async def generate_card(
     name: str = Form(...),
     phone: str = Form(...),
     email: str = Form(...),
-    job: str = Form(""),
-    company: str = Form(""),
-    website: str = Form(""),
+    job: str = Form(...),
+    company: str = Form(...),
+    website: str = Form(...),
 ):
     data = CardData(name=name, phone=phone, email=email, job=job, company=company, website=website)
 
@@ -73,9 +70,8 @@ async def generate_card(
     # Create files
     create_vcf(data, vcf_file)
     create_qr(data, qr_file)
-    create_card_image(data, img_file)
 
-    # Package into ZIP
+    # Package into ZIP (only VCF + QR)
     with zipfile.ZipFile(zip_file, "w") as zipf:
         zipf.write(vcf_file)
         zipf.write(qr_file)
