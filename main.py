@@ -48,41 +48,6 @@ def create_qr(data: CardData, filename: str):
     img.save(filename)
 
 
-def create_card_image(data: CardData, filename: str):
-    # Image size
-    width, height = 800, 400
-    img = Image.new("RGB", (width, height), "#E6F2FA")  # Light Sky Blue BG
-    draw = ImageDraw.Draw(img)
-
-    # Border
-    border_color = "#1E3A8A"  # Dark Blue
-    border_width = 8
-    draw.rectangle([0, 0, width, height], outline=border_color, width=border_width)
-
-    # Fonts (safe defaults)
-    font_bold = ImageFont.load_default()
-    font_regular = ImageFont.load_default()
-
-    # Start position
-    x_start, y_start = 60, 80
-    line_spacing = 50
-
-    info = [
-        ("Name:", data.name),
-        ("Phone:", data.phone),
-        ("Email:", data.email),
-        ("Job Title:", data.job),
-        ("Company:", data.company),
-        ("Website:", data.website),
-    ]
-
-    for i, (label, value) in enumerate(info):
-        y = y_start + i * line_spacing
-        draw.text((x_start, y), label, font=font_bold, fill="black")
-        draw.text((x_start + 180, y), value, font=font_regular, fill="black")
-
-    img.save(filename)
-
 
 @app.get("/")
 async def form_page(request: Request):
@@ -103,7 +68,6 @@ async def generate_card(
     # File paths
     vcf_file = "card.vcf"
     qr_file = "qrcode.png"
-    img_file = "business_card.png"
     zip_file = "card_package.zip"
 
     # Create files
@@ -115,6 +79,5 @@ async def generate_card(
     with zipfile.ZipFile(zip_file, "w") as zipf:
         zipf.write(vcf_file)
         zipf.write(qr_file)
-        zipf.write(img_file)
 
     return FileResponse(zip_file, media_type="application/zip", filename=zip_file)
