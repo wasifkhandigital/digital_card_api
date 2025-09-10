@@ -59,15 +59,14 @@ def create_card_image(data: CardData, filename: str):
     border_width = 8
     draw.rectangle([0, 0, width, height], outline=border_color, width=border_width)
 
-    # Safe fonts (no crash on server)
+    # Fonts (safe defaults)
     font_bold = ImageFont.load_default()
     font_regular = ImageFont.load_default()
 
-    # Starting position
+    # Start position
     x_start, y_start = 60, 80
     line_spacing = 50
 
-    # Labels and values
     info = [
         ("Name:", data.name),
         ("Phone:", data.phone),
@@ -87,7 +86,7 @@ def create_card_image(data: CardData, filename: str):
 
 @app.get("/")
 async def form_page(request: Request):
-    return templates.TemplateResponse("form.html", {"request": request})
+    return templates.TemplateResponse("index.html", {"request": request})
 
 
 @app.post("/card")
@@ -95,9 +94,9 @@ async def generate_card(
     name: str = Form(...),
     phone: str = Form(...),
     email: str = Form(...),
-    job: str = Form(...),
-    company: str = Form(...),
-    website: str = Form(...),
+    job: str = Form(""),
+    company: str = Form(""),
+    website: str = Form(""),
 ):
     data = CardData(name=name, phone=phone, email=email, job=job, company=company, website=website)
 
