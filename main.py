@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Request, Form, HTTPException, BackgroundTasks
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 import qrcode
@@ -9,6 +9,8 @@ from qrcode.image.styles.colormasks import SolidFillColorMask
 from PIL import Image, ImageDraw, ImageFont
 from zipfile import ZipFile
 import os
+import io
+import urllib.parse
 
 app = FastAPI()
 
@@ -26,6 +28,57 @@ def cleanup_files(files):
         if os.path.exists(f):
             os.remove(f)
 
+# -------- Info Image endpoint --------
+@app.get("/info_image")
+def info_image(full_name: str, phone: str, email: str, job_title: str = "", company: str = "", website: str = ""):
+    width, height = 600, 400
+    img = Image.new("RGB", (width, height), color=(255, 255, 255))
+    draw = ImageDraw.Draw(img)
+
+    # Fonts
+    try:
+        font = ImageFont.truetype("arial.ttf", 20)
+        badge_font = ImageFont.truetype("arial.ttf", 16)
+    except:
+        font = ImageFont.load_default()
+        badge_font = ImageFont.load_default()
+
+    # Draw user info
+    lines = [
+        f"Full Name: {full_name}",
+        f"Phone: {phone}",
+        f"Email: {email}",
+        f"Job Title: {job_title}",
+        f"Company: {company}",
+        f"Website: {website}"
+    ]
+    y_text = 20
+    for line in lines:
+        draw.text((30, y_text), line, fill=(30, 30, 30), font=font)
+        y_text += 40
+
+    # Circular WK badge + "Developed by Wasif Khan"
+    badge_radius = 15
+    badge_x = width // 2 - 80
+    badge_y = height - 50
+    draw.ellipse(
+        (badge_x, badge_y, badge_x + badge_radius*2, badge_y + badge_radius*2),
+        fill=(30, 60, 114)
+    )
+    draw.text(
+        (badge_x + badge_radius*2 + 10, badge_y),
+        "Developed by Wasif Khan",
+        fill=(50, 50, 50),
+        font=badge_font
+    )
+
+    # Serve image directly using StreamingResponse
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return StreamingResponse(buf, media_type="image/png")
+
+# -------- Generate Card endpoint --------
 @app.post("/card")
 async def generate_card(
     background_tasks: BackgroundTasks,
@@ -38,11 +91,10 @@ async def generate_card(
 ):
     vcard_path = "card.vcf"
     qr_path = "qrcode.png"
-    info_image_path = "info_image.png"
     zip_path = "card_package.zip"
 
     try:
-        # --------- vCard Content ----------
+        # vCard content
         vcard_content = f"""BEGIN:VCARD
 VERSION:3.0
 FN:{full_name}
@@ -56,14 +108,25 @@ END:VCARD
         with open(vcard_path, "w") as f:
             f.write(vcard_content)
 
-        # --------- QR Code ----------
+        # Encode info_image URL with query params
+        query_params = urllib.parse.urlencode({
+            "full_name": full_name,
+            "phone": phone,
+            "email": email,
+            "job_title": job_title,
+            "company": company,
+            "website": website
+        })
+        info_url = f"https://digital-card-api.onrender.com/info_image?{query_params}"
+
+        # QR Code
         qr = qrcode.QRCode(
             version=1,
             error_correction=qrcode.constants.ERROR_CORRECT_H,
             box_size=10,
             border=4
         )
-        qr.add_data(vcard_content)
+        qr.add_data(info_url)
         qr.make(fit=True)
 
         qr_img = qr.make_image(
@@ -72,7 +135,7 @@ END:VCARD
             color_mask=SolidFillColorMask(front_color=(30,60,114), back_color=(224,255,255))
         )
 
-        # Add logo if exists
+        # Optional logo
         logo_path = "logo.png"
         if os.path.exists(logo_path):
             logo = Image.open(logo_path)
@@ -88,44 +151,13 @@ END:VCARD
 
         qr_img.save(qr_path)
 
-        # --------- Info Image ----------
-        # Create blank white image
-        width, height = 500, 300
-        info_img = Image.new("RGB", (width, height), color=(255,255,255))
-        draw = ImageDraw.Draw(info_img)
-
-        # Load default font
-        try:
-            font = ImageFont.truetype("arial.ttf", 20)
-        except:
-            font = ImageFont.load_default()
-
-        # Prepare text
-        lines = [
-            f"Full Name: {full_name}",
-            f"Phone: {phone}",
-            f"Email: {email}",
-            f"Job Title: {job_title}",
-            f"Company: {company}",
-            f"Website: {website}"
-        ]
-
-        # Write text
-        y_text = 20
-        for line in lines:
-            draw.text((20, y_text), line, fill=(30,30,30), font=font)
-            y_text += 35
-
-        info_img.save(info_image_path)
-
-        # --------- Create ZIP ----------
+        # Create ZIP
         with ZipFile(zip_path, "w") as zipf:
             zipf.write(vcard_path, arcname="card.vcf")
             zipf.write(qr_path, arcname="qrcode.png")
-            zipf.write(info_image_path, arcname="info_image.png")
 
-        # Schedule cleanup
-        background_tasks.add_task(cleanup_files, [vcard_path, qr_path, info_image_path, zip_path])
+        # Cleanup
+        background_tasks.add_task(cleanup_files, [vcard_path, qr_path, zip_path])
 
         return FileResponse(zip_path, media_type="application/zip", filename="digital_card.zip")
 
