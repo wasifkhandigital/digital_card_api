@@ -31,46 +31,51 @@ def cleanup_files(files):
 # -------- Info Image endpoint --------
 @app.get("/info_image")
 def info_image(full_name: str, phone: str, email: str, job_title: str = "", company: str = "", website: str = ""):
-    width, height = 600, 400
+    width, height = 700, 400
     img = Image.new("RGB", (width, height), color=(255, 255, 255))
     draw = ImageDraw.Draw(img)
 
+    # Gradient background
+    for y in range(height):
+        r = 240
+        g = 248 - int((y / height) * 40)
+        b = 255 - int((y / height) * 80)
+        draw.line([(0, y), (width, y)], fill=(r, g, b))
+
     # Fonts
     try:
+        name_font = ImageFont.truetype("arial.ttf", 32)
+        title_font = ImageFont.truetype("arial.ttf", 22)
         font = ImageFont.truetype("arial.ttf", 20)
-        badge_font = ImageFont.truetype("arial.ttf", 16)
     except:
+        name_font = ImageFont.load_default()
+        title_font = ImageFont.load_default()
         font = ImageFont.load_default()
-        badge_font = ImageFont.load_default()
 
-    # Draw user info
-    lines = [
-        f"Full Name: {full_name}",
-        f"Phone: {phone}",
-        f"Email: {email}",
-        f"Job Title: {job_title}",
-        f"Company: {company}",
-        f"Website: {website}"
+    # Card Border
+    border_color = (30, 60, 114)
+    draw.rounded_rectangle([(20, 20), (width - 20, height - 20)], radius=25, outline=border_color, width=5)
+
+    # Left Section (Name & Title)
+    draw.text((50, 80), full_name, fill=(20, 40, 90), font=name_font)
+    if job_title:
+        draw.text((50, 130), job_title, fill=(60, 60, 60), font=title_font)
+    if company:
+        draw.text((50, 170), company, fill=(60, 60, 60), font=title_font)
+
+    # Right Section (Contact Info with icons)
+    x_start = 400
+    y_text = 100
+    contact_info = [
+        ("📞", f"{phone}"),
+        ("✉️", f"{email}"),
+        ("🌐", f"{website}") if website else None
     ]
-    y_text = 20
-    for line in lines:
-        draw.text((30, y_text), line, fill=(30, 30, 30), font=font)
-        y_text += 40
-
-    # Circular WK badge + "Developed by Wasif Khan"
-    badge_radius = 15
-    badge_x = width // 2 - 80
-    badge_y = height - 50
-    draw.ellipse(
-        (badge_x, badge_y, badge_x + badge_radius*2, badge_y + badge_radius*2),
-        fill=(30, 60, 114)
-    )
-    draw.text(
-        (badge_x + badge_radius*2 + 10, badge_y),
-        "Developed by Wasif Khan",
-        fill=(50, 50, 50),
-        font=badge_font
-    )
+    for item in contact_info:
+        if item:
+            icon, text = item
+            draw.text((x_start, y_text), f"{icon}  {text}", fill=(40, 40, 40), font=font)
+            y_text += 50
 
     # Serve image directly using StreamingResponse
     buf = io.BytesIO()
@@ -132,7 +137,7 @@ END:VCARD
         qr_img = qr.make_image(
             image_factory=StyledPilImage,
             module_drawer=RoundedModuleDrawer(),
-            color_mask=SolidFillColorMask(front_color=(30,60,114), back_color=(224,255,255))
+            color_mask=SolidFillColorMask(front_color=(30, 60, 114), back_color=(224, 255, 255))
         )
 
         # Optional logo
