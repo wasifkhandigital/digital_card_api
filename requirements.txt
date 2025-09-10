@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+qrcode[pil]
+python-multipart
+email-validator
+pillow
+jinja2
